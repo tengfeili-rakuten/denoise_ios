@@ -23,10 +23,19 @@ class AudioManager: ObservableObject {
         let session = AVAudioSession.sharedInstance()
         
         do {
+            //帅俊请看 ： 加一个开关：
+            
+//            var mode = voiceChat|.default
+            //降噪
             // Voice chat mode + Bluetooth CVC, suitable for low latency with simultaneous recording & playback
             try session.setCategory(.playAndRecord,
                                     mode: .voiceChat,
                                     options: [.allowBluetooth])
+            
+            //非降噪
+//            try session.setCategory(.playAndRecord,
+//                                    mode: .default,
+//                                    options: [.allowBluetooth])
             
             try session.setActive(true)
             
