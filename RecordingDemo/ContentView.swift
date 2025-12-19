@@ -9,9 +9,10 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var audioManager = AudioManager()
+    @State private var showUploadAlert = false
     
     var body: some View {
-        VStack(spacing: 30) {
+        VStack(spacing: 24) {
             Text("音频录音演示")
                 .font(.title)
                 .fontWeight(.bold)
@@ -29,11 +30,43 @@ struct ContentView: View {
                 Circle()
                     .fill(audioManager.isRecording ? Color.red : Color.gray)
                     .frame(width: 20, height: 20)
+                    .overlay(
+                        audioManager.isRecording ?
+                        Circle()
+                            .stroke(Color.red.opacity(0.4), lineWidth: 4)
+                            .scaleEffect(1.5)
+                            .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: audioManager.isRecording)
+                        : nil
+                    )
                 
                 Text(audioManager.isRecording ? "录音中..." : "未录音")
                     .font(.headline)
             }
             .padding(.vertical, 10)
+            
+            // 降噪开关
+            HStack {
+                Image(systemName: audioManager.denoiseEnabled ? "waveform.badge.minus" : "waveform")
+                    .font(.title2)
+                    .foregroundColor(audioManager.denoiseEnabled ? .blue : .gray)
+                
+                Toggle("降噪模式", isOn: $audioManager.denoiseEnabled)
+                    .toggleStyle(SwitchToggleStyle(tint: .blue))
+            }
+            .padding(.horizontal, 40)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.gray.opacity(0.1))
+            )
+            .padding(.horizontal, 20)
+            .disabled(audioManager.isRecording) // 录音中不能切换模式
+            .opacity(audioManager.isRecording ? 0.6 : 1.0)
+            
+            // 当前模式提示
+            Text(audioManager.denoiseEnabled ? "使用 voiceChat 模式进行降噪" : "使用 default 模式，无降噪")
+                .font(.caption)
+                .foregroundColor(.secondary)
             
             // Real-time audio level visualizer
             if audioManager.isRecording {
@@ -72,37 +105,81 @@ struct ContentView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
-                .padding(.vertical, 20)
+                .padding(.vertical, 16)
                 .transition(.opacity)
             }
             
             Spacer()
             
-            // Start recording button
+            // 合并的开始/停止录音按钮
             Button {
-                audioManager.startRecording()
+                withAnimation(.spring(response: 0.3)) {
+                    audioManager.toggleRecording()
+                }
             } label: {
-                Text("开始录音")
-                    .font(.headline)
-                    .foregroundColor(.white)
-                    .frame(width: 200, height: 60)
-                    .background(audioManager.isRecording ? Color.gray : Color.blue)
-                    .cornerRadius(12)
+                HStack(spacing: 12) {
+                    Image(systemName: audioManager.isRecording ? "stop.fill" : "mic.fill")
+                        .font(.title2)
+                    
+                    Text(audioManager.isRecording ? "停止录音" : "开始录音")
+                        .font(.headline)
+                }
+                .foregroundColor(.white)
+                .frame(width: 200, height: 60)
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(audioManager.isRecording ? Color.red : Color.blue)
+                )
+                .shadow(color: (audioManager.isRecording ? Color.red : Color.blue).opacity(0.4),
+                        radius: 8, x: 0, y: 4)
             }
-            .disabled(audioManager.isRecording)
             
-            // Stop recording button
+            // 上传按钮
             Button {
-                audioManager.stopRecording()
+                showUploadAlert = true
             } label: {
-                Text("停止录音")
-                    .font(.headline)
-                    .foregroundColor(.white)
-                    .frame(width: 200, height: 60)
-                    .background(audioManager.isRecording ? Color.red : Color.gray)
-                    .cornerRadius(12)
+                HStack(spacing: 12) {
+                    if audioManager.isUploading {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    } else {
+                        Image(systemName: "icloud.and.arrow.up.fill")
+                            .font(.title2)
+                    }
+                    
+                    Text(audioManager.isUploading ? "上传中..." : "上传录音")
+                        .font(.headline)
+                }
+                .foregroundColor(.white)
+                .frame(width: 200, height: 60)
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(canUpload ? Color.green : Color.gray)
+                )
+                .shadow(color: canUpload ? Color.green.opacity(0.4) : Color.clear,
+                        radius: 8, x: 0, y: 4)
             }
-            .disabled(!audioManager.isRecording)
+            .disabled(!canUpload)
+            .alert("上传录音", isPresented: $showUploadAlert) {
+                Button("取消", role: .cancel) { }
+                Button("确认上传") {
+                    audioManager.uploadRecording()
+                }
+            } message: {
+                Text("确定要将录音文件上传到服务器吗？")
+            }
+            
+            // 上传状态消息
+            if !audioManager.uploadMessage.isEmpty {
+                Text(audioManager.uploadMessage)
+                    .font(.caption)
+                    .foregroundColor(audioManager.uploadMessage.contains("✅") ? .green :
+                                    audioManager.uploadMessage.contains("❌") ? .red : .secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .transition(.opacity)
+            }
             
             Spacer()
             
@@ -133,6 +210,14 @@ struct ContentView: View {
                 .padding(.horizontal)
         }
         .padding()
+        .animation(.easeInOut, value: audioManager.uploadMessage)
+    }
+    
+    // 是否可以上传
+    private var canUpload: Bool {
+        !audioManager.isRecording &&
+        !audioManager.isUploading &&
+        audioManager.recordingFileURL != nil
     }
 }
 
